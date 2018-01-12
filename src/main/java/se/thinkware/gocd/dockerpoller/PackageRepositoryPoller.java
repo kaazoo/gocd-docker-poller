@@ -11,10 +11,12 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 import com.thoughtworks.go.plugin.api.logging.Logger;
+
 import se.thinkware.gocd.dockerpoller.message.CheckConnectionResultMessage;
 import se.thinkware.gocd.dockerpoller.message.PackageMaterialProperties;
 import se.thinkware.gocd.dockerpoller.message.PackageRevisionMessage;
 import se.thinkware.gocd.dockerpoller.message.ValidationResultMessage;
+import se.thinkware.gocd.dockerpoller.message.PackageMaterialProperty;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -50,9 +52,15 @@ class PackageRepositoryPoller {
         this.transport = transport;
     }
     
-    private HttpResponse getUrl(GenericUrl url) throws IOException {
+    private HttpResponse getUrl(GenericUrl url, HttpHeaders basicAuth) throws IOException {
+        //HttpHeaders basicAuth = this.getBasicAuthConfig(this.configurationProvider.packageConfiguration());
         HttpRequest request = transport.createRequestFactory().buildGetRequest(url);
         request.setThrowExceptionOnExecuteError(false);
+
+        if (basicAuth != null) {
+            request.setHeaders(basicAuth);
+        }
+
         HttpResponse response = request.execute();
 
         LOGGER.info(String.format("HTTP GET URL: %s %s", url.toString(), response.getStatusCode()));
@@ -72,16 +80,25 @@ class PackageRepositoryPoller {
                 String tokenUrl = matcher.group(1);
                 LOGGER.info(String.format("Token URL: %s", tokenUrl));
 
-                String tokenResponse = transport
+                HttpRequest tokenRequest = transport
                     .createRequestFactory()
-                    .buildGetRequest(new GenericUrl(tokenUrl))
-                    .execute()
-                    .parseAsString();
+                    .buildGetRequest(new GenericUrl(tokenUrl));
+
+                if (basicAuth != null) {
+                    LOGGER.info(String.format("Basic auth: %s", basicAuth.toString()));
+                    tokenRequest.setHeaders(basicAuth);
+                }
+                
+                LOGGER.info(String.format("Headers: %s", tokenRequest.getHeaders()));
+
+                String tokenResponse = tokenRequest.execute().parseAsString();
 
                 Map<String, String> tokenMap = new GsonBuilder().create().fromJson(
                     tokenResponse, 
                     new TypeToken<Map<String, String>>(){}.getType()
                 );
+
+                LOGGER.info(String.format("Token: %s", tokenMap.get("token")));
 
                 request = transport.createRequestFactory(req -> 
                     req.getHeaders().setAuthorization(
@@ -97,9 +114,13 @@ class PackageRepositoryPoller {
     }
 
     private CheckConnectionResultMessage UrlChecker(GenericUrl url, String what) {
+        return this.UrlChecker(url, what, null);
+    }
+
+    private CheckConnectionResultMessage UrlChecker(GenericUrl url, String what, HttpHeaders basicAuth) {
         LOGGER.info(String.format("Checking URL: %s", url.toString()));
         try {
-            HttpResponse response = getUrl(url);
+            HttpResponse response = getUrl(url, basicAuth);
             HttpHeaders headers = response.getHeaders();
             String dockerHeader = "docker-distribution-api-version";
             String message;
@@ -134,9 +155,13 @@ class PackageRepositoryPoller {
     }
 
     List<String> TagFetcher(GenericUrl url) {
+        return this.TagFetcher(url, null);
+    }
+
+    List<String> TagFetcher(GenericUrl url, HttpHeaders basicAuth) {
         try {
             LOGGER.info(String.format("Fetch tags for %s", url.toString()));
-            String tagResponse = getUrl(url).parseAsString();          
+            String tagResponse = getUrl(url, basicAuth).parseAsString();          
             DockerTagsList tagsList = fromJsonString(tagResponse, DockerTagsList.class);
             LOGGER.info(String.format("Got tags: %s", tagsList.getTags().toString()));
             return tagsList.getTags();
@@ -144,6 +169,19 @@ class PackageRepositoryPoller {
             LOGGER.warn("Got no tags!");
             return Collections.emptyList();
         }
+    }
+
+    private HttpHeaders getBasicAuthConfig(PackageMaterialProperties repositoryConfiguration) {
+        LOGGER.info(String.format("GetBasicAuth: %s", repositoryConfiguration.getPropertyMap().toString()));
+        PackageMaterialProperty registryUsername = repositoryConfiguration.getProperty(Constants.DOCKER_REGISTRY_USERNAME);
+        PackageMaterialProperty registryPassword = repositoryConfiguration.getProperty(Constants.DOCKER_REGISTRY_PASSWORD);
+
+        if (registryUsername == null || registryPassword == null) {
+            return null;
+        }
+
+        LOGGER.info(String.format("Username: %s Password: %s", registryUsername.value(), registryPassword.value()));
+        return new HttpHeaders().setBasicAuthentication(registryUsername.value(), registryPassword.value());
     }
 
     public CheckConnectionResultMessage checkConnectionToRepository(
@@ -155,7 +193,8 @@ class PackageRepositoryPoller {
             return new CheckConnectionResultMessage(CheckConnectionResultMessage.STATUS.FAILURE, validationResultMessage.getMessages());
         }
         String dockerRegistryUrl = repositoryConfiguration.getProperty(Constants.DOCKER_REGISTRY_URL).value();
-        return UrlChecker(new GenericUrl(dockerRegistryUrl), "registry");
+        HttpHeaders basicAuth = this.getBasicAuthConfig(repositoryConfiguration);
+        return UrlChecker(new GenericUrl(dockerRegistryUrl), "registry", basicAuth);
     }
 
     public CheckConnectionResultMessage checkConnectionToPackage(
@@ -164,7 +203,8 @@ class PackageRepositoryPoller {
     ) {
         String dockerPackageUrl =
                 getDockerPackageUrl(packageConfiguration, repositoryConfiguration);
-        return UrlChecker(new GenericUrl(dockerPackageUrl), "image");
+        HttpHeaders basicAuth = this.getBasicAuthConfig(repositoryConfiguration);
+        return UrlChecker(new GenericUrl(dockerPackageUrl), "image", basicAuth);
     }
 
     private String getDockerPackageUrl(
@@ -205,7 +245,8 @@ class PackageRepositoryPoller {
     ) {
         LOGGER.info("getLatestRevision");
         GenericUrl url = new GenericUrl(getDockerPackageUrl(packageConfiguration, repositoryConfiguration));
-        List<String> tags = TagFetcher(url);
+        HttpHeaders basicAuth = this.getBasicAuthConfig(repositoryConfiguration);
+        List<String> tags = TagFetcher(url, basicAuth);
         String filter = packageConfiguration.getProperty(Constants.DOCKER_TAG_FILTER).value();
         if (filter.equals("")) {
             filter = ".*";
@@ -219,6 +260,7 @@ class PackageRepositoryPoller {
             return new PackageRevisionMessage();
         }
 
+        LOGGER.info("Looking for biggest");
         String latest = "";
         for (Object tag: matching) {
             latest = biggest(latest, tag.toString());

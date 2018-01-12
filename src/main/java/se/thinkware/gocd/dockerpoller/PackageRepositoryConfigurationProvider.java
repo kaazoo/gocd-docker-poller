@@ -25,6 +25,22 @@ class PackageRepositoryConfigurationProvider {
                         .withPartOfIdentity(true)
                         .withRequired(true)
         );
+        repositoryConfigurationResponse.addPackageMaterialProperty(
+                Constants.DOCKER_REGISTRY_USERNAME,
+                new PackageMaterialProperty()
+                        .withDisplayName("Private Docker Registry username")
+                        .withDisplayOrder("2")
+                        .withPartOfIdentity(true)
+                        .withRequired(false)
+        );
+        repositoryConfigurationResponse.addPackageMaterialProperty(
+                Constants.DOCKER_REGISTRY_PASSWORD,
+                new PackageMaterialProperty()
+                        .withDisplayName("Private Docker Registry password")
+                        .withDisplayOrder("3")
+                        .withPartOfIdentity(true)
+                        .withRequired(false)
+        );
         return repositoryConfigurationResponse;
     }
 
