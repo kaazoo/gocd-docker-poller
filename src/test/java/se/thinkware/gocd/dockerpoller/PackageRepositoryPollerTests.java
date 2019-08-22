@@ -55,20 +55,6 @@ class PackageRepositoryPollerTests {
         }
     };
 
-    private final HttpTransport mockTransportMissingHeader = new MockHttpTransport() {
-        @Override
-        public LowLevelHttpRequest buildRequest(String method, String url) throws IOException {
-            return new MockLowLevelHttpRequest() {
-                @Override
-                public LowLevelHttpResponse execute() throws IOException {
-                    MockLowLevelHttpResponse response = new MockLowLevelHttpResponse();
-                    response.setStatusCode(200);
-                    return response;
-                }
-            };
-        }
-    };
-
     private final HttpTransport mockTransportTags = new MockHttpTransport() {
         @Override
         public LowLevelHttpRequest buildRequest(String method, String url) throws IOException {
@@ -111,28 +97,6 @@ class PackageRepositoryPollerTests {
         assertFalse(status.success());
         assertEquals(Collections.singletonList("Could not find docker registry. [404]"), status.getMessages());
     }
-
-/*
-    @Test
-    void RepositoryMissingHeaderTest() {
-
-        PackageRepositoryPoller poller = new PackageRepositoryPoller(
-                new PackageRepositoryConfigurationProvider(),
-                mockTransportMissingHeader
-        );
-        PackageMaterialProperties repositoryConfiguration = new PackageMaterialProperties();
-        PackageMaterialProperty url = new PackageMaterialProperty().withValue("http://xxx/v2/");
-        repositoryConfiguration.addPackageMaterialProperty(Constants.DOCKER_REGISTRY_URL, url);
-        PackageMaterialProperty name = new PackageMaterialProperty().withValue("registry/name");
-        repositoryConfiguration.addPackageMaterialProperty(Constants.DOCKER_REGISTRY_NAME, name);
-        CheckConnectionResultMessage status = poller.checkConnectionToRepository(repositoryConfiguration);
-
-        assertFalse(status.success());
-        assertEquals(
-                Collections.singletonList("Missing header: docker-distribution-api-version found only: []"),
-                status.getMessages());
-    }
-*/
 
     @Test
     void RepositoryFoundTest() {
@@ -347,4 +311,3 @@ class PackageRepositoryPollerTests {
     }
 
 }
-

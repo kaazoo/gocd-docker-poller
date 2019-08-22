@@ -51,7 +51,7 @@ class PackageRepositoryPoller {
         this.configurationProvider = configurationProvider;
         this.transport = transport;
     }
-    
+
     private HttpResponse getUrl(GenericUrl url, HttpHeaders basicAuth) throws IOException {
         //HttpHeaders basicAuth = this.getBasicAuthConfig(this.configurationProvider.packageConfiguration());
         HttpRequest request = transport.createRequestFactory().buildGetRequest(url);
@@ -66,7 +66,7 @@ class PackageRepositoryPoller {
         LOGGER.info(String.format("HTTP GET URL: %s %s", url.toString(), response.getStatusCode()));
         if (response.isSuccessStatusCode()) {
             return response;
-        } 
+        }
 
         if (response.getStatusCode() == 401) {
             String authenticate = response.getHeaders().getAuthenticate();
@@ -75,8 +75,8 @@ class PackageRepositoryPoller {
                 Matcher matcher = Pattern
                      .compile("realm=\"([^\"]+)\"(?:,service=\"([^\"]+)\")?(?:,scope=\"([^\"]+)\")?", Pattern.CASE_INSENSITIVE)
                      .matcher(authenticate);
-                
-                matcher.find();                
+
+                matcher.find();
                 String service = matcher.group(2);
                 String scope = matcher.group(3);
                 String tokenUrl = matcher.group(1) + "?service=" + service + "&scope=" + scope;
@@ -91,20 +91,20 @@ class PackageRepositoryPoller {
                     LOGGER.info(String.format("Basic auth: %s", basicAuth.toString()));
                     tokenRequest.setHeaders(basicAuth);
                 }
-                
+
                 LOGGER.info(String.format("Headers: %s", tokenRequest.getHeaders()));
                 LOGGER.info(String.format("URL: %s", tokenRequest.getUrl()));
 
                 String tokenResponse = tokenRequest.execute().parseAsString();
 
                 Map<String, String> tokenMap = new GsonBuilder().create().fromJson(
-                    tokenResponse, 
+                    tokenResponse,
                     new TypeToken<Map<String, String>>(){}.getType()
                 );
 
                 LOGGER.info(String.format("Token: %s", tokenMap.get("token")));
 
-                request = transport.createRequestFactory(req -> 
+                request = transport.createRequestFactory(req ->
                     req.getHeaders().setAuthorization(
                         "Bearer " + tokenMap.get("token")
                     )
@@ -113,7 +113,7 @@ class PackageRepositoryPoller {
                 return request.execute();
             }
         }
-        
+
     	throw new HttpResponseException(response);
     }
 
@@ -126,27 +126,21 @@ class PackageRepositoryPoller {
         try {
             HttpResponse response = getUrl(url, basicAuth);
             HttpHeaders headers = response.getHeaders();
-            String dockerHeader = "docker-distribution-api-version";
-            String dockerHeaderValue = "registry/2.0";
+            Integer statusCode = response.getStatusCode();
             String message;
             CheckConnectionResultMessage.STATUS status;
-            // set header if missing (Quay)
-            if (headers.containsKey(dockerHeader) == false) {
-                headers.set(dockerHeader, dockerHeaderValue);
-            }
-            if (headers.containsKey(dockerHeader)) {
-                if (headers.get(dockerHeader).toString().startsWith("[registry/2.")) {
-                    status = CheckConnectionResultMessage.STATUS.SUCCESS;
-                    message = "Docker " + what + " found.";
-                    LOGGER.info(message);
-                } else {
-                    status = CheckConnectionResultMessage.STATUS.FAILURE;
-                    message = "Unknown value " + headers.get(dockerHeader).toString() + " for header " + dockerHeader;
-                    LOGGER.warn(message);
-                }
+
+            if (statusCode == 200) {
+                status = CheckConnectionResultMessage.STATUS.SUCCESS;
+                message = "Docker " + what + " found.";
+                LOGGER.info(message);
+            } else if (statusCode == 404) {
+                status = CheckConnectionResultMessage.STATUS.FAILURE;
+                message = "Docker " + what + " not found.";
+                LOGGER.warn(message);
             } else {
                 status = CheckConnectionResultMessage.STATUS.FAILURE;
-                message = "Missing header: " + dockerHeader + " found only: " + headers.keySet();
+                message = "Request failed. Got HTTP status code " + Integer.toString(statusCode);
                 LOGGER.warn(message);
             }
             return new CheckConnectionResultMessage(status, Collections.singletonList(message));
@@ -170,7 +164,7 @@ class PackageRepositoryPoller {
     List<String> TagFetcher(GenericUrl url, HttpHeaders basicAuth) {
         try {
             LOGGER.info(String.format("Fetch tags for %s", url.toString()));
-            String tagResponse = getUrl(url, basicAuth).parseAsString();          
+            String tagResponse = getUrl(url, basicAuth).parseAsString();
             DockerTagsList tagsList = fromJsonString(tagResponse, DockerTagsList.class);
             LOGGER.info(String.format("Got tags: %s", tagsList.getTags().toString()));
             return tagsList.getTags();
