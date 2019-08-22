@@ -73,11 +73,14 @@ class PackageRepositoryPoller {
             LOGGER.info(String.format("WWW-Authenticate: %s", authenticate));
             if (authenticate != null) {
                 Matcher matcher = Pattern
-                     .compile("realm=\"([^\"]+)\"", Pattern.CASE_INSENSITIVE)
+                     .compile("realm=\"([^\"]+)\",service=\"(.*)\",scope=\"(.*)\"", Pattern.CASE_INSENSITIVE)
                      .matcher(authenticate);
                 
                 matcher.find();                
-                String tokenUrl = matcher.group(1);
+                String service = matcher.group(2);
+                String scope = matcher.group(3);
+                String tokenUrl = matcher.group(1) + "?service=" + service + "&scope=" + scope;
+
                 LOGGER.info(String.format("Token URL: %s", tokenUrl));
 
                 HttpRequest tokenRequest = transport
@@ -90,6 +93,7 @@ class PackageRepositoryPoller {
                 }
                 
                 LOGGER.info(String.format("Headers: %s", tokenRequest.getHeaders()));
+                LOGGER.info(String.format("URL: %s", tokenRequest.getUrl()));
 
                 String tokenResponse = tokenRequest.execute().parseAsString();
 
@@ -123,10 +127,22 @@ class PackageRepositoryPoller {
             HttpResponse response = getUrl(url, basicAuth);
             HttpHeaders headers = response.getHeaders();
             String dockerHeader = "docker-distribution-api-version";
+            String linkHeader = "link";
             String message;
             CheckConnectionResultMessage.STATUS status;
             if (headers.containsKey(dockerHeader)) {
                 if (headers.get(dockerHeader).toString().startsWith("[registry/2.")) {
+                    status = CheckConnectionResultMessage.STATUS.SUCCESS;
+                    message = "Docker " + what + " found.";
+                    LOGGER.info(message);
+                } else {
+                    status = CheckConnectionResultMessage.STATUS.FAILURE;
+                    message = "Unknown value " + headers.get(dockerHeader).toString() + " for header " + dockerHeader;
+                    LOGGER.warn(message);
+                }
+            } else if (headers.containsKey(linkHeader)) {
+                LOGGER.warn(headers.get(linkHeader).toString());
+                if (headers.get(linkHeader).toString().startsWith("[</v2/")) {
                     status = CheckConnectionResultMessage.STATUS.SUCCESS;
                     message = "Docker " + what + " found.";
                     LOGGER.info(message);
