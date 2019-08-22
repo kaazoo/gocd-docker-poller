@@ -73,7 +73,7 @@ class PackageRepositoryPoller {
             LOGGER.info(String.format("WWW-Authenticate: %s", authenticate));
             if (authenticate != null) {
                 Matcher matcher = Pattern
-                     .compile("realm=\"([^\"]+)\",service=\"(.*)\",scope=\"(.*)\"", Pattern.CASE_INSENSITIVE)
+                     .compile("realm=\"([^\"]+)\"(?:,service=\"([^\"]+)\")?(?:,scope=\"([^\"]+)\")?", Pattern.CASE_INSENSITIVE)
                      .matcher(authenticate);
                 
                 matcher.find();                
@@ -127,22 +127,15 @@ class PackageRepositoryPoller {
             HttpResponse response = getUrl(url, basicAuth);
             HttpHeaders headers = response.getHeaders();
             String dockerHeader = "docker-distribution-api-version";
-            String linkHeader = "link";
+            String dockerHeaderValue = "registry/2.0";
             String message;
             CheckConnectionResultMessage.STATUS status;
+            // set header if missing (Quay)
+            if (headers.containsKey(dockerHeader) == false) {
+                headers.set(dockerHeader, dockerHeaderValue);
+            }
             if (headers.containsKey(dockerHeader)) {
                 if (headers.get(dockerHeader).toString().startsWith("[registry/2.")) {
-                    status = CheckConnectionResultMessage.STATUS.SUCCESS;
-                    message = "Docker " + what + " found.";
-                    LOGGER.info(message);
-                } else {
-                    status = CheckConnectionResultMessage.STATUS.FAILURE;
-                    message = "Unknown value " + headers.get(dockerHeader).toString() + " for header " + dockerHeader;
-                    LOGGER.warn(message);
-                }
-            } else if (headers.containsKey(linkHeader)) {
-                LOGGER.warn(headers.get(linkHeader).toString());
-                if (headers.get(linkHeader).toString().startsWith("[</v2/")) {
                     status = CheckConnectionResultMessage.STATUS.SUCCESS;
                     message = "Docker " + what + " found.";
                     LOGGER.info(message);

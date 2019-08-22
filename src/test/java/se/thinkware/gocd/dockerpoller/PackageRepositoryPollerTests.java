@@ -112,6 +112,7 @@ class PackageRepositoryPollerTests {
         assertEquals(Collections.singletonList("Could not find docker registry. [404]"), status.getMessages());
     }
 
+/*
     @Test
     void RepositoryMissingHeaderTest() {
 
@@ -131,6 +132,7 @@ class PackageRepositoryPollerTests {
                 Collections.singletonList("Missing header: docker-distribution-api-version found only: []"),
                 status.getMessages());
     }
+*/
 
     @Test
     void RepositoryFoundTest() {
